@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Note Generator</title>
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Theme color for browser UI -->
+    <meta name="theme-color" content="#6200ea">
+    
+    <!-- iOS support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="NoteGen">
+    <link rel="apple-touch-icon" href="/static/icons/icon1.png">
+</head>
+<body>
+    <h1>AI Note Generator</h1>
+    
+    <!-- User Input Section -->
+    <input type="text" id="topicInput" placeholder="Enter topic" />
+    <button onclick="generateNotes()">Generate Notes</button>
+    <button id="install-btn" style="display: none;">Install App</button>
+    
+    <!-- Generated Notes Section -->
+    <h2>Generated Notes</h2>
+    <p id="notes"></p>
+    
+    <!-- PDF Download Section -->
+    <h3>Download PDF</h3>
+    <a id="downloadLink" href="#" style="display: none;">Download PDF</a>
+    
+    <!-- Scripts -->
+    <script>
+        // Service Worker Registration - with origin check
+        function registerServiceWorker() {
+            if ('serviceWorker' in navigator && 
+                (window.location.protocol === 'https:' || 
+                 window.location.hostname === 'localhost' || 
+                 window.location.hostname === '127.0.0.1')) {
+                
+                navigator.serviceWorker.register('/static/service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registered successfully:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            } else {
+                console.log('Service workers are not supported in this environment');
+            }
+        }
+        
+        // Check if we're in a proper context to use service workers
+        try {
+            // This will throw an error if we're in a sandboxed environment
+            if (window.self === window.top && 
+                (window.location.protocol === 'https:' || 
+                 window.location.hostname === 'localhost' || 
+                 window.location.hostname === '127.0.0.1')) {
+                
+                registerServiceWorker();
+                
+                // Install PWA Logic - only if we're in a proper context
+                let deferredPrompt;
+                const installBtn = document.getElementById('install-btn');
+                
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    // Prevent the mini-infobar from appearing on mobile
+                    e.preventDefault();
+                    // Stash the event so it can be triggered later
+                    deferredPrompt = e;
+                    // Show the install button
+                    installBtn.style.display = 'block';
+                });
+                
+                installBtn.addEventListener('click', async () => {
+                    // Hide the install button
+                    installBtn.style.display = 'none';
+                    // Show the installation prompt
+                    deferredPrompt.prompt();
+                    // Wait for the user to respond to the prompt
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`User ${outcome} the installation`);
+                    // Clear the saved prompt since it can't be used again
+                    deferredPrompt = null;
+                });
+                
+                // Handle the case when app is already installed
+                window.addEventListener('appinstalled', () => {
+                    // Hide the install button when app is installed
+                    installBtn.style.display = 'none';
+                    console.log('PWA was installed');
+                });
+            } else {
+                console.log('Not in a proper context for PWA installation');
+            }
+        } catch (error) {
+            console.log('Running in a restricted context, PWA features disabled');
+        }
+        
+        // Note generation function
+        function generateNotes() {
+            let topic = document.getElementById("topicInput").value;
+            
+            if (!topic) {
+                alert("Please enter a topic");
+                return;
+            }
+            
+            fetch("http://127.0.0.1:5000/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ topic: topic })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.notes) {
+                    document.getElementById("notes").innerText = data.notes;
+                    let downloadLink = document.getElementById("downloadLink");
+                    downloadLink.href = data.pdf_download_url;
+                    downloadLink.style.display = "block"; // Show the download link
+                } else {
+                    alert("Error: " + (data.error || "Unknown error occurred"));
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                alert("Failed to generate notes. Please try again later.");
+            });
+        }
+    </script>
+</body>
+</html>
